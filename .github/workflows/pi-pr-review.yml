@@ -59,5 +59,6 @@ jobs:
           PI_SKILL_DIR: /tmp/pi-pr-review/skills/pr-review
           NODE_PATH: ${{ github.workspace }}/node_modules
         run: |
+          echo '{"type":"module"}' > package.json
           npm install @mariozechner/pi-coding-agent tsx
           npx tsx /tmp/pi-pr-review/pr-review.ts
