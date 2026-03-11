@@ -1,0 +1,58 @@
+name: PI PR Review (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: "Model to use (e.g. claude-sonnet-4-20250514, claude-opus-4-20250514)"
+        type: string
+        default: claude-sonnet-4-20250514
+      thinking_level:
+        description: "Thinking level: off, minimal, low, medium, high, xhigh"
+        type: string
+        default: medium
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout PR repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pi and tsx
+        run: npm install -g @mariozechner/pi-coding-agent tsx
+
+      - name: Download review script and skill
+        env:
+          # IMPORTANT: Change this to your actual org/repo after pushing
+          WORKFLOW_REPO: rHedBull/auto-agents
+        run: |
+          mkdir -p /tmp/pi-pr-review/skills/pr-review
+          curl -sfL "https://raw.githubusercontent.com/${WORKFLOW_REPO}/main/scripts/pr-review.ts" \
+            -o /tmp/pi-pr-review/pr-review.ts
+          curl -sfL "https://raw.githubusercontent.com/${WORKFLOW_REPO}/main/skills/pr-review/SKILL.md" \
+            -o /tmp/pi-pr-review/skills/pr-review/SKILL.md
+
+      - name: Run PR Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PI_MODEL: ${{ inputs.model }}
+          PI_THINKING: ${{ inputs.thinking_level }}
+          PI_SKILL_DIR: /tmp/pi-pr-review/skills/pr-review
+        run: tsx /tmp/pi-pr-review/pr-review.ts
