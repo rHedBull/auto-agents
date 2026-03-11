@@ -35,30 +35,40 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install pi and tsx
-        run: npm install -g @mariozechner/pi-coding-agent tsx
+      - name: Install pi
+        run: npm install -g @mariozechner/pi-coding-agent
 
-      - name: Download review script and skill
+      - name: Download skill
         env:
           WORKFLOW_REPO: rHedBull/auto-agents
         run: |
-          mkdir -p /tmp/pi-pr-review/skills/pr-review
-          curl -sfL "https://raw.githubusercontent.com/${WORKFLOW_REPO}/main/scripts/pr-review.ts" \
-            -o /tmp/pi-pr-review/pr-review.ts
+          mkdir -p .pi/skills/pr-review
           curl -sfL "https://raw.githubusercontent.com/${WORKFLOW_REPO}/main/skills/pr-review/SKILL.md" \
-            -o /tmp/pi-pr-review/skills/pr-review/SKILL.md
+            -o .pi/skills/pr-review/SKILL.md
 
-      - name: Run PR Review
+      - name: Setup auth
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_OAUTH: ${{ secrets.ANTHROPIC_OAUTH }}
+        run: |
+          mkdir -p ~/.pi/agent
+          if [ -n "$ANTHROPIC_OAUTH" ]; then
+            echo "{\"anthropic\":$ANTHROPIC_OAUTH}" > ~/.pi/agent/auth.json
+            echo "🔑 Using OAuth credentials (Claude subscription)"
+          elif [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "{\"anthropic\":{\"type\":\"api_key\",\"key\":\"$ANTHROPIC_API_KEY\"}}" > ~/.pi/agent/auth.json
+            echo "🔑 Using API key"
+          else
+            echo "❌ Either ANTHROPIC_API_KEY or ANTHROPIC_OAUTH secret must be set"
+            exit 1
+          fi
+
+      - name: Run PR Review
+        env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PI_MODEL: ${{ inputs.model }}
-          PI_THINKING: ${{ inputs.thinking_level }}
-          PI_SKILL_DIR: /tmp/pi-pr-review/skills/pr-review
-          NODE_PATH: ${{ github.workspace }}/node_modules
         run: |
-          echo '{"type":"module"}' > package.json
-          npm install @mariozechner/pi-coding-agent tsx
-          npx tsx /tmp/pi-pr-review/pr-review.ts
+          pi --model "${{ inputs.model }}" \
+             --thinking "${{ inputs.thinking_level }}" \
+             --no-session \
+             -p "Review PR #${PR_NUMBER} using the pr-review skill. After the review, post it as a PR review comment using 'gh pr review' — do NOT ask for confirmation, just post it."
