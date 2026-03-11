@@ -8,6 +8,7 @@ import {
 	SettingsManager,
 	type Skill,
 } from "@mariozechner/pi-coding-agent";
+import { writeFileSync, mkdirSync } from "fs";
 
 // --- Config from environment ---
 const prNumber = process.env.PR_NUMBER;
@@ -17,8 +18,36 @@ const modelId = process.env.PI_MODEL ?? "claude-sonnet-4-20250514";
 const thinkingLevel = (process.env.PI_THINKING ?? "medium") as "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 const skillDir = process.env.PI_SKILL_DIR ?? "/tmp/pi-pr-review/skills/pr-review";
 
-// --- Auth (picks up ANTHROPIC_API_KEY from env) ---
-const authStorage = AuthStorage.create("/tmp/pi-agent/auth.json");
+// --- Auth ---
+// Supports two modes:
+//   1. ANTHROPIC_API_KEY env var (API key)
+//   2. ANTHROPIC_OAUTH env var (JSON with OAuth credentials from auth.json)
+const authPath = "/tmp/pi-agent/auth.json";
+mkdirSync("/tmp/pi-agent", { recursive: true });
+
+const oauthJson = process.env.ANTHROPIC_OAUTH;
+if (oauthJson) {
+	// Write OAuth credentials to auth.json so the SDK can use them
+	try {
+		const oauthCreds = JSON.parse(oauthJson);
+		const authData = {
+			anthropic: {
+				type: "oauth",
+				...oauthCreds,
+			},
+		};
+		writeFileSync(authPath, JSON.stringify(authData, null, 2));
+		console.log("🔑 Using OAuth credentials (Claude subscription)\n");
+	} catch (e) {
+		throw new Error(`Failed to parse ANTHROPIC_OAUTH: ${e}`);
+	}
+} else if (process.env.ANTHROPIC_API_KEY) {
+	console.log("🔑 Using API key\n");
+} else {
+	throw new Error("Either ANTHROPIC_API_KEY or ANTHROPIC_OAUTH must be set");
+}
+
+const authStorage = AuthStorage.create(authPath);
 const modelRegistry = new ModelRegistry(authStorage);
 
 const [provider, ...rest] = modelId.includes("/") ? modelId.split("/") : ["anthropic", modelId];
@@ -66,7 +95,7 @@ session.subscribe((event) => {
 });
 
 // --- Run review ---
-console.log(`\n🔍 Reviewing PR #${prNumber} with ${provider}/${model.id} (thinking: ${thinkingLevel})\n`);
+console.log(`🔍 Reviewing PR #${prNumber} with ${provider}/${model.id} (thinking: ${thinkingLevel})\n`);
 
 await session.prompt(
 	`Review PR #${prNumber} using the pr-review skill. ` +

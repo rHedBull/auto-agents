@@ -13,7 +13,9 @@ on:
         default: medium
     secrets:
       ANTHROPIC_API_KEY:
-        required: true
+        required: false
+      ANTHROPIC_OAUTH:
+        required: false
 
 jobs:
   review:
@@ -23,6 +25,13 @@ jobs:
       contents: read
 
     steps:
+      - name: Validate auth
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ] && [ -z "${{ secrets.ANTHROPIC_OAUTH }}" ]; then
+            echo "❌ Either ANTHROPIC_API_KEY or ANTHROPIC_OAUTH secret must be set"
+            exit 1
+          fi
+
       - name: Checkout PR repo
         uses: actions/checkout@v4
         with:
@@ -38,7 +47,6 @@ jobs:
 
       - name: Download review script and skill
         env:
-          # IMPORTANT: Change this to your actual org/repo after pushing
           WORKFLOW_REPO: rHedBull/auto-agents
         run: |
           mkdir -p /tmp/pi-pr-review/skills/pr-review
@@ -50,6 +58,7 @@ jobs:
       - name: Run PR Review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_OAUTH: ${{ secrets.ANTHROPIC_OAUTH }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PI_MODEL: ${{ inputs.model }}
