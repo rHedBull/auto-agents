@@ -53,7 +53,19 @@ jobs:
         run: |
           mkdir -p ~/.pi/agent
           if [ -n "$ANTHROPIC_OAUTH" ]; then
-            echo "{\"anthropic\":$ANTHROPIC_OAUTH}" > ~/.pi/agent/auth.json
+            # Write auth.json using python to handle JSON properly
+            python3 -c "
+          import json, sys, os
+          oauth = json.loads(os.environ['ANTHROPIC_OAUTH'])
+          # Ensure type field is set
+          if 'type' not in oauth:
+              oauth['type'] = 'oauth'
+          auth = {'anthropic': oauth}
+          with open(os.path.expanduser('~/.pi/agent/auth.json'), 'w') as f:
+              json.dump(auth, f)
+          # Debug: show structure (no secrets)
+          print('Auth structure:', {k: type(v).__name__ for k, v in oauth.items()})
+          "
             echo "🔑 Using OAuth credentials (Claude subscription)"
           elif [ -n "$ANTHROPIC_API_KEY" ]; then
             echo "{\"anthropic\":{\"type\":\"api_key\",\"key\":\"$ANTHROPIC_API_KEY\"}}" > ~/.pi/agent/auth.json
