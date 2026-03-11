@@ -57,4 +57,7 @@ jobs:
           PI_MODEL: ${{ inputs.model }}
           PI_THINKING: ${{ inputs.thinking_level }}
           PI_SKILL_DIR: /tmp/pi-pr-review/skills/pr-review
-        run: tsx /tmp/pi-pr-review/pr-review.ts
+          NODE_PATH: ${{ github.workspace }}/node_modules
+        run: |
+          npm install @mariozechner/pi-coding-agent
+          tsx /tmp/pi-pr-review/pr-review.ts
