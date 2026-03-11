@@ -60,4 +60,4 @@ jobs:
           NODE_PATH: ${{ github.workspace }}/node_modules
         run: |
           npm install @mariozechner/pi-coding-agent
-          tsx /tmp/pi-pr-review/pr-review.ts
+          node --import tsx /tmp/pi-pr-review/pr-review.ts
