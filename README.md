@@ -2,18 +2,30 @@
 
 Automated AI-powered PR reviews using [pi](https://github.com/mariozechner/pi-coding-agent) and Claude. Set up once, reuse across all your repos.
 
-## Setup
+## Quick Start
 
-### 1. Authentication (pick one)
+### 1. Set up authentication (once)
 
-#### Option A: Claude subscription (OAuth)
+Pick one of the two options:
 
-Use your existing Claude Pro/Team subscription — no API costs.
+#### Option A: API key (recommended for CI)
 
-1. Make sure you're logged into pi locally with your Claude account (`pi` → login when prompted)
+Reliable, doesn't expire, pay-per-use (~$0.05–0.30 per review with Sonnet).
+
+1. Get a key from [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
+2. Add it as a GitHub **repository secret** named `ANTHROPIC_API_KEY` on each repo where you want reviews:
+   - Repo → Settings → Secrets and variables → Actions → New repository secret
+
+> **Tip:** If you have a GitHub Organization, set it as an **org-level secret** (Org → Settings → Secrets → Actions) so all repos can use it without per-repo setup.
+
+#### Option B: Claude subscription (OAuth)
+
+Use your existing Claude Pro/Team subscription — no extra API costs.
+
+1. Make sure you're logged into pi locally with your Claude account (`pi` → log in when prompted)
 2. Extract your OAuth credentials:
    ```bash
-   cat ~/.pi/agent/auth.json | jq '.anthropic'
+   cat ~/.pi/agent/auth.json | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)['anthropic'], indent=2))"
    ```
    You'll see something like:
    ```json
@@ -24,36 +36,14 @@ Use your existing Claude Pro/Team subscription — no API costs.
      "expires": 1234567890
    }
    ```
-3. Copy the **entire JSON object** (including `type`, `refresh`, `access`, `expires`)
-4. Add it as a GitHub secret named `ANTHROPIC_OAUTH`:
-   - **Org-level**: GitHub → Your org → Settings → Secrets → Actions → New
-   - **Per-repo**: Repo → Settings → Secrets → Actions → New
+3. Copy the **entire JSON object**
+4. Add it as a GitHub **repository secret** named `ANTHROPIC_OAUTH`
 
-> ⚠️ OAuth refresh tokens can expire. If reviews stop working, re-run step 2-4 with fresh credentials.
+> ⚠️ **Important:** OAuth access tokens are short-lived. Every time you use `pi` locally, it refreshes the token — which invalidates the one stored in GitHub. When reviews start failing with auth errors, re-run steps 2–4 with fresh credentials. For a set-and-forget setup, use Option A instead.
 
-#### Option B: API key
+### 2. Add the workflow to your repo
 
-1. Get a key from [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
-2. Add it as a GitHub secret named `ANTHROPIC_API_KEY`
-
-### 2. Add to any repo
-
-Create `.github/workflows/pr-review.yml` in the target repo:
-
-**With OAuth (Claude subscription):**
-```yaml
-name: PR Review
-on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize]
-
-jobs:
-  review:
-    uses: rHedBull/auto-agents/.github/workflows/pi-pr-review.yml@main
-    secrets:
-      ANTHROPIC_OAUTH: ${{ secrets.ANTHROPIC_OAUTH }}
-```
+Create `.github/workflows/pr-review.yml` in the repo you want reviewed:
 
 **With API key:**
 ```yaml
@@ -63,14 +53,79 @@ on:
     branches: [main]
     types: [opened, synchronize]
 
+permissions:
+  pull-requests: write
+  contents: read
+
 jobs:
   review:
     uses: rHedBull/auto-agents/.github/workflows/pi-pr-review.yml@main
-    secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    secrets: inherit
 ```
 
-That's it. Every PR to `main` gets an AI review posted as a comment.
+**With OAuth:**
+```yaml
+name: PR Review
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  review:
+    uses: rHedBull/auto-agents/.github/workflows/pi-pr-review.yml@main
+    secrets: inherit
+```
+
+> **Note:** Both options use `secrets: inherit` — the workflow auto-detects which secret is available (`ANTHROPIC_API_KEY` or `ANTHROPIC_OAUTH`).
+
+### 3. Done
+
+Open a PR targeting `main` and the review will be posted automatically as a PR review comment.
+
+## Step-by-step example
+
+Here's a complete walkthrough for adding PR reviews to a repo called `my-app`:
+
+1. **Set the secret** on `my-app`:
+   - Go to https://github.com/YOUR_USER/my-app/settings/secrets/actions
+   - Click "New repository secret"
+   - Name: `ANTHROPIC_API_KEY` (or `ANTHROPIC_OAUTH`)
+   - Value: your API key (or OAuth JSON)
+
+2. **Create the workflow file** in your repo:
+   ```bash
+   mkdir -p .github/workflows
+   cat > .github/workflows/pr-review.yml << 'EOF'
+   name: PR Review
+   on:
+     pull_request:
+       branches: [main]
+       types: [opened, synchronize]
+
+   permissions:
+     pull-requests: write
+     contents: read
+
+   jobs:
+     review:
+       uses: rHedBull/auto-agents/.github/workflows/pi-pr-review.yml@main
+       secrets: inherit
+   EOF
+   ```
+
+3. **Commit and push**:
+   ```bash
+   git add .github/workflows/pr-review.yml
+   git commit -m "Add automated PR review"
+   git push
+   ```
+
+4. **Open a PR** to `main` — the review appears automatically.
 
 ## Configuration
 
@@ -83,8 +138,7 @@ jobs:
     with:
       model: claude-opus-4-20250514    # default: claude-sonnet-4-20250514
       thinking_level: high              # default: medium
-    secrets:
-      ANTHROPIC_OAUTH: ${{ secrets.ANTHROPIC_OAUTH }}
+    secrets: inherit
 ```
 
 | Input | Default | Description |
@@ -92,7 +146,7 @@ jobs:
 | `model` | `claude-sonnet-4-20250514` | Claude model to use |
 | `thinking_level` | `medium` | `off`, `minimal`, `low`, `medium`, `high`, `xhigh` |
 
-### Multiple branches
+### Review multiple branches
 
 ```yaml
 on:
@@ -111,8 +165,7 @@ jobs:
     with:
       model: claude-opus-4-20250514
       thinking_level: high
-    secrets:
-      ANTHROPIC_OAUTH: ${{ secrets.ANTHROPIC_OAUTH }}
+    secrets: inherit
 
   review-develop:
     if: github.base_ref == 'develop'
@@ -120,8 +173,7 @@ jobs:
     with:
       model: claude-sonnet-4-20250514
       thinking_level: medium
-    secrets:
-      ANTHROPIC_OAUTH: ${{ secrets.ANTHROPIC_OAUTH }}
+    secrets: inherit
 ```
 
 ## What the review checks
@@ -145,16 +197,27 @@ Fork this repo and edit `skills/pr-review/SKILL.md` to:
 - Change the output format
 - Add project-specific review rules
 
+## Troubleshooting
+
+### "Authentication failed" error
+- **OAuth:** Your access token has expired. Re-extract credentials from `~/.pi/agent/auth.json` (use pi locally first to refresh them) and update the GitHub secret.
+- **API key:** Check that `ANTHROPIC_API_KEY` is set correctly on the repo.
+
+### Workflow shows "startup_failure"
+- Make sure the `permissions` block is present in your calling workflow (both `pull-requests: write` and `contents: read`).
+
+### Review doesn't trigger
+- The workflow only triggers on PRs targeting branches listed in `branches:` (default: `main`).
+- Check that the trigger types include the event (`opened`, `synchronize`).
+
 ## Project structure
 
 ```
 auto-agents/
 ├── .github/workflows/
-│   └── pi-pr-review.yml    # reusable workflow (called by other repos)
-├── scripts/
-│   └── pr-review.ts         # review script using pi SDK
+│   └── pi-pr-review.yml       # reusable workflow (called by other repos)
 ├── skills/
 │   └── pr-review/
-│       └── SKILL.md          # pr-review skill instructions
+│       └── SKILL.md            # pr-review skill instructions
 └── README.md
 ```
